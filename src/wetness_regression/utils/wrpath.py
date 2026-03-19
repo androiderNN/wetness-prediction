@@ -6,3 +6,5 @@ DOWNLOADS_DIR = PARENT_DIR / "downloads"
 TRAIN_CSV = DOWNLOADS_DIR / "train.csv"
 TEST_CSV = DOWNLOADS_DIR / "test.csv"
 
+DATA_DIR = PARENT_DIR / "data"
+
