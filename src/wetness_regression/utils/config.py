@@ -43,6 +43,10 @@ class TrainingConfig:
     """学習率"""
     device: str
     """使用するデバイス"""
+    scheduler: str = "linear_decay"
+    """学習率スケジューラ名。'none' / 'cosine' / 'warmup_cosine' / 'linear_decay' / 'reduce_on_plateau' / 'step'"""
+    freeze_backbone: bool = True
+    """True の場合、出力層以外を凍結する"""
     output_dir: Path | None = None
     """出力先の親ディレクトリ"""
     image_size: int = -1
@@ -86,6 +90,7 @@ def load_trainingconfig(yaml_path: Path | str) -> TrainingConfig:
     # 型変換
     config_dict["num_epochs"] = int(config_dict["num_epochs"])
     config_dict["lr"] = float(config_dict["lr"])
+    config_dict["freeze_backbone"] = bool(config_dict["freeze_backbone"])
 
     if "output_dir" in config_dict and config_dict["output_dir"] is not None:
         config_dict["output_dir"] = Path(config_dict["output_dir"])

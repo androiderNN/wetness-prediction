@@ -6,6 +6,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
+from wetness_regression.model.lr_scheduler import build_scheduler
 
 from wetness_regression.utils.config import TrainingConfig
 from wetness_regression.model.regression_model import RegressionModel, RMSELoss
@@ -85,13 +86,14 @@ def train(
         valid_samples: 検証用サンプル
         batch_size: バッチサイズ
     """
-    model = RegressionModel(pretrained_model_name=cfg.model_name)
+    model = RegressionModel(pretrained_model_name=cfg.model_name, freeze_backbone=cfg.freeze_backbone)
     model.to(cfg.device)
     image_size = cfg.image_size
 
     # 必要なパラメータのみ学習する
     optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=cfg.lr)
     criterion = RMSELoss()
+    scheduler = build_scheduler(cfg.scheduler, optimizer, cfg.num_epochs)
 
     print(f"\nStarting training.")
     print(f"config: {asdict(cfg)}\n")
@@ -129,6 +131,8 @@ def train(
         )
 
         print(f"Epoch {epoch}/{cfg.num_epochs}, Train Loss: {epoch_train_loss:.4f}, Valid Loss: {epoch_valid_loss:.4f}")
+
+        scheduler.step()
 
         loss_log.append([epoch, epoch_train_loss, epoch_valid_loss])
 
