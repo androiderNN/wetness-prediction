@@ -27,8 +27,8 @@ def train(cfg: TrainingConfig, train_dataloader: DataLoader, valid_dataloader: D
     # TODO: 損失関数の選択
     criterion = nn.MSELoss()
 
-    print(f"Starting fine-tuning.")
-    print(f"config: {asdict(cfg)}")
+    print(f"\nStarting training.")
+    print(f"config: {asdict(cfg)}\n")
 
     loss_log = list()
     best_epoch = -1
@@ -82,8 +82,7 @@ def train(cfg: TrainingConfig, train_dataloader: DataLoader, valid_dataloader: D
             best_loss = epoch_valid_loss
             best_model = model.state_dict()
 
-    print("training complete.")
-    print(f"Best Epoch: {best_epoch} loss: {best_loss}")
+    print(f"\ntraining finished.\nBest Epoch: {best_epoch} loss: {best_loss}")
 
     # 学習結果の保存
     torch.save(best_model, cfg.paths.model_path)
