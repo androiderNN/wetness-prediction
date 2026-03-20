@@ -132,24 +132,25 @@ def train(
 
         loss_log.append([epoch, epoch_train_loss, epoch_valid_loss])
 
+        # ログの更新
+        log_df = pd.DataFrame(loss_log)
+        log_df.columns = ["epoch", "train", "valid"]
+        log_df.to_csv(cfg.paths.log_path, index=False)
+
         # ロスが下がった場合はモデルを更新
         if epoch_valid_loss < best_loss:
             best_epoch = epoch
             best_loss = epoch_valid_loss
             best_model = model.state_dict()
 
+            # モデルの保存
+            torch.save(best_model, cfg.paths.model_path)
+
     print(f"\ntraining finished.\nBest Epoch: {best_epoch} loss: {best_loss}")
 
-    # 学習結果の保存
-    torch.save(best_model, cfg.paths.model_path)
-
-    log = pd.DataFrame(loss_log)
-    log.columns = ["epoch", "train", "valid"]
-    log.to_csv(cfg.paths.log_path, index=False)
-
     # プロット
-    log = log.iloc[:, 1:]
-    plt.plot(log, label=log.columns.tolist())
+    log_df = log_df.iloc[:, 1:]
+    plt.plot(log_df, label=log_df.columns.tolist())
     plt.legend()
     plt.savefig(cfg.paths.log_img_path)
 
