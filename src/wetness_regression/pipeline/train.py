@@ -91,5 +91,5 @@ def train(cfg: TrainingConfig, train_dataloader: DataLoader, valid_dataloader: D
     log = pd.DataFrame(loss_log)
     log.to_csv(cfg.paths.log_path)
 
-    model = model.load_state_dict(best_model)
+    model.load_state_dict(best_model)
     return model

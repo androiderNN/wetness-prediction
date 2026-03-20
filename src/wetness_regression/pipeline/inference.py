@@ -1,5 +1,6 @@
 import pandas as pd
 import torch
+from torch.utils.data import DataLoader
 
 from wetness_regression.utils.config import TrainingConfig
 from wetness_regression.model.regression_model import RegressionModel
@@ -9,35 +10,36 @@ from wetness_regression.dataset.load_image import WetnessImageDataset
 def inference(
     model: RegressionModel,
     cfg: TrainingConfig,
-    samples: list[WetnessImageDataset],
+    dataloader: DataLoader,
     export: bool = False
 ) -> pd.DataFrame:
     """
-    モデルで推論＆出力する
+    モデルで推論を実行する
 
     Args:
-        model: モデル
+        model: 学習済みモデル
         cfg: 設定
-        dataloader: DataLoader
-        export: submission.csvを作成するかどうか
+        dataloader: テストデータの DataLoader
+        export: submission.csv を作成するかどうか
     
     Returns:
-        result_df: id, predのdataframe
+        result_df: id, pred のDataFrame
     """
     model.to(cfg.device)
     model.eval()
 
     result = list()
 
-    for sample in samples:
-        id = sample.id
-        x = torch.tensor(sample.image, dtype=torch.float32)
+    with torch.no_grad():
+        for batch_idx, (images, _) in enumerate(dataloader):
+            images = images.to(cfg.device)
+            pred = model(images)
 
-        pred = model(x)
-
-        result.append([id, float(pred)])
+            # バッチ内の各サンプルの予測値を結果に追加
+            for i in range(images.shape[0]):
+                result.append([batch_idx * dataloader.batch_size + i, float(pred[i])])
     
-    result_df = pd.DataFrame(result)
+    result_df = pd.DataFrame(result, columns=["id", "pred"])
 
     if export:
         result_df.to_csv(cfg.paths.submission_path)

@@ -25,6 +25,7 @@ dependencies = [
   "torchvision",
   "opencv-python",
   "scikit-learn",
+  "pyyaml",
 ]
 
 [tool.setuptools.packages.find]

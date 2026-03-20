@@ -82,8 +82,6 @@ def build_dataloader(
         num_workers=num_workers,
     )
 
-    return train_dataloader, valid_dataloader
-
     test_samples = load_csv(TEST_CSV)
     test_img_samples = [WetnessImageSample.from_wetnesssample(s, TEST_IMAGE_DIR) for s in test_samples]
     test_dataset = WetnessImageDataset(test_img_samples, require_target=False)
