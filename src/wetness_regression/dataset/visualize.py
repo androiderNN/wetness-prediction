@@ -3,8 +3,8 @@ import os
 import shutil
 import matplotlib.pyplot as plt
 
-from wetness_regression.utils.wrpath import TRAIN_IMAGE_DIR, TEST_IMAGE_DIR
-from wetness_regression.dataset.load_dataset import WetnessSample
+from wetness_regression.utils.wrpath import TRAIN_CSV, TEST_CSV, TRAIN_IMAGE_DIR, TEST_IMAGE_DIR
+from wetness_regression.dataset.load_dataset import WetnessSample, load_csv
 
 
 def plot_sample(sample: WetnessSample, figsize: tuple[int] = (6, 6)):
@@ -19,7 +19,7 @@ def plot_sample(sample: WetnessSample, figsize: tuple[int] = (6, 6)):
     return fig
 
 
-def make_image(samples: list[WetnessSample], figsize: tuple[int] = (6, 6), dpi: int = 100) -> Path:
+def make_image(samples: list[WetnessSample], figsize: tuple[float] = (2.24, 2.24), dpi: int = 100) -> Path:
     """
     データを画像として保存する
 
@@ -45,3 +45,11 @@ def make_image(samples: list[WetnessSample], figsize: tuple[int] = (6, 6), dpi: 
     
     return out_dir
 
+
+if __name__ == '__main__':
+    # 波形画像の作成
+    samples = load_csv(TRAIN_CSV)
+    _ = make_image(samples)
+
+    samples = load_csv(TEST_CSV)
+    _ = make_image(samples)
