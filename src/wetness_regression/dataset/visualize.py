@@ -1,9 +1,9 @@
 from pathlib import Path
 import os
-import datetime
+import shutil
 import matplotlib.pyplot as plt
 
-from wetness_regression.utils.wrpath import DATA_DIR
+from wetness_regression.utils.wrpath import TRAIN_IMAGE_DIR, TEST_IMAGE_DIR
 from wetness_regression.dataset.load_dataset import WetnessSample
 
 
@@ -19,7 +19,7 @@ def plot_sample(sample: WetnessSample):
     return fig
 
 
-def make_image(samples: list[WetnessSample], output_dir: Path = DATA_DIR) -> Path:
+def make_image(samples: list[WetnessSample]) -> Path:
     """
     データを画像として保存する
 
@@ -30,9 +30,10 @@ def make_image(samples: list[WetnessSample], output_dir: Path = DATA_DIR) -> Pat
     Returns:
         out_dir: 保存先のディレクトリ
     """
-    sample_type = "test" if samples[0].target is None else "train"
-    timestamp = datetime.datetime.strftime(datetime.datetime.now(), "%m%d_%H%M%S")
-    out_dir = Path(output_dir) / f"image_{sample_type}"
+    out_dir = TEST_IMAGE_DIR if samples[0].target is None else TRAIN_IMAGE_DIR
+
+    if os.path.exists(out_dir):
+        shutil.rmtree(out_dir)
 
     os.mkdir(out_dir)
 

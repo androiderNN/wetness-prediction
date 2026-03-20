@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from typing import Optional
 from pathlib import Path
 import pandas as pd
+from torch.utils.data import DataLoader
 
 
 @dataclass
@@ -45,7 +46,3 @@ def load_csv(csv_path: Path) -> list[WetnessSample]:
         samples.append(sample)
 
     return samples
-
-
-
-
