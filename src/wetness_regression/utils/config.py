@@ -16,6 +16,8 @@ class output_paths:
     """modelのパス"""
     log_path: Path
     """各エポックの損失の保存パス"""
+    log_img_path: Path
+    """logのプロットのパス"""
     submission_path: Path
     """推論結果のパス"""
 
@@ -24,6 +26,7 @@ class output_paths:
         self.output_dir = output_dir
         self. model_path = output_dir / "model.pth"
         self.log_path = output_dir / "loss.csv"
+        self.log_img_path = output_dir / "loss.png"
         self.submission_path = output_dir / "submission.csv"
 
 

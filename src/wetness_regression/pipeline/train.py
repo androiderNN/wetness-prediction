@@ -1,12 +1,13 @@
 import random
 from dataclasses import asdict
 import pandas as pd
+import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
 import torch.optim as optim
 
 from wetness_regression.utils.config import TrainingConfig
-from wetness_regression.model.regression_model import RegressionModel
+from wetness_regression.model.regression_model import RegressionModel, RMSELoss
 from wetness_regression.dataset.load_image import WetnessImageSample
 
 
@@ -78,7 +79,7 @@ def train(
 
     # 必要なパラメータのみ学習する
     optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=cfg.lr)
-    criterion = nn.MSELoss()
+    criterion = RMSELoss()
 
     print(f"\nStarting training.")
     print(f"config: {asdict(cfg)}\n")
@@ -130,7 +131,14 @@ def train(
     torch.save(best_model, cfg.paths.model_path)
 
     log = pd.DataFrame(loss_log)
-    log.to_csv(cfg.paths.log_path)
+    log.columns = ["epoch", "train", "valid"]
+    log.to_csv(cfg.paths.log_path, index=False)
+
+    # プロット
+    log = log.iloc[:, 1:]
+    plt.plot(log, label=log.columns.tolist())
+    plt.legend()
+    plt.savefig(cfg.paths.log_img_path)
 
     model.load_state_dict(best_model)
     return model

@@ -34,3 +34,13 @@ class RegressionModel(nn.Module):
     def forward(self, x):
         raw_pred = self.base_model(x)
         return torch.sigmoid(raw_pred) * 100
+
+
+class RMSELoss(nn.Module):
+    def __init__(self):
+        super(RMSELoss,self).__init__()
+
+    def forward(self,x,y):
+        criterion = nn.MSELoss()
+        loss = torch.sqrt(criterion(x, y))
+        return loss
