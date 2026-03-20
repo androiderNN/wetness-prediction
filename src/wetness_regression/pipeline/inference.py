@@ -27,12 +27,13 @@ def inference(
     """
     model.to(cfg.device)
     model.eval()
+    image_size = cfg.image_size
 
     result = list()
 
     with torch.no_grad():
         for batch_samples in iter_batches(samples, batch_size=32, shuffle=False):
-            images = build_image_batch(batch_samples)
+            images = build_image_batch(batch_samples, image_size=image_size)
             images = images.to(cfg.device)
             pred = model(images)
 

@@ -1,8 +1,11 @@
 import os
 from pathlib import Path
 from dataclasses import dataclass, asdict
+import numpy as np
 import numpy.typing as npt
 import cv2
+import torch
+import torch.nn.functional as F
 from sklearn.model_selection import train_test_split
 
 from wetness_regression.utils.wrpath import TRAIN_CSV, TEST_CSV, TRAIN_IMAGE_DIR, TEST_IMAGE_DIR
@@ -28,6 +31,14 @@ class WetnessImageSample(WetnessSample):
         image = cv2.imread(img_path)
         if image is None:
             raise ValueError(f"failed to load image: {img_path}")
+
+        # チャンネルの変換
+        image = image[:, :, ::-1].transpose(2, 0, 1) / 255.0
+
+        # 標準化
+        mean = np.array([0.485, 0.456, 0.406], dtype=image.dtype).reshape(3, 1, 1)
+        std = np.array([0.229, 0.224, 0.225], dtype=image.dtype).reshape(3, 1, 1)
+        image = (image - mean) / std
 
         return cls(**wnsample, image=image)
 

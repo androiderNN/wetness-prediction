@@ -2,6 +2,22 @@ import torch
 import torch.nn as nn
 import torchvision.models as models # 一般的な事前学習済みモデルのためにtorchvisionを想定
 
+
+def get_model_input_size(model_name: str) -> int:
+    """モデル名から想定する入力解像度（一辺）を返す。"""
+    model_input_size = {
+        "resnet18": 224,
+        "vit_b_16": 224,
+        "swin_t": 224,
+    }
+
+    if model_name not in model_input_size:
+        raise ValueError(
+            f"supported models are ['resnet18'、'vit_b_16'、'swin_t']"
+        )
+
+    return model_input_size[model_name]
+
 class RegressionModel(nn.Module):
     def __init__(self, num_output_features=1, pretrained_model_name='resnet18'):
         super().__init__()

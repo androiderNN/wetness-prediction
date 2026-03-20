@@ -5,6 +5,7 @@ from dataclasses import dataclass
 import yaml
 
 from wetness_regression.utils.wrpath import OUTPUT_DIR
+from wetness_regression.model.regression_model import get_model_input_size
 
 
 class output_paths:
@@ -42,14 +43,18 @@ class TrainingConfig:
     """学習率"""
     device: str
     """使用するデバイス"""
-    output_dir: Path | None
+    output_dir: Path | None = None
     """出力先の親ディレクトリ"""
+    image_size: int = -1
+    """入力画像サイズ（正方形、一辺）"""
     paths: output_paths = None
     """出力に関連するパス"""
 
     def __post_init__(self):
         if self.output_dir is None:
             self.output_dir = OUTPUT_DIR
+
+        self.image_size = get_model_input_size(self.model_name)
 
         timestamp = datetime.datetime.strftime(datetime.datetime.now(), "%m%d_%H%M%S")
         dirname = f"{timestamp}_{self.model_name}"

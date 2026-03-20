@@ -4,6 +4,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torch.optim as optim
 
 from wetness_regression.utils.config import TrainingConfig
@@ -11,10 +12,19 @@ from wetness_regression.model.regression_model import RegressionModel, RMSELoss
 from wetness_regression.dataset.load_image import WetnessImageSample
 
 
-def build_image_batch(samples: list[WetnessImageSample]) -> torch.Tensor:
+def build_image_batch(samples: list[WetnessImageSample], image_size: int) -> torch.Tensor:
     """サンプル一覧から画像テンソルを構築する。"""
-    images = [torch.from_numpy(sample.image).permute(2, 0, 1).float() / 255.0 for sample in samples]
-    return torch.stack(images)
+    images = [torch.from_numpy(sample.image).float() for sample in samples]
+    batch = torch.stack(images)
+
+    # モデル入力サイズに合わせたリサイズ
+    current_size = images[0].shape[1]
+
+    if current_size != image_size:
+        print(f"reshaping images from {current_size} to {image_size}")
+        batch = F.interpolate(batch, size=(image_size, image_size), mode="bilinear", align_corners=False)
+
+    return batch
 
 
 def build_target_batch(samples: list[WetnessImageSample]) -> torch.Tensor:
@@ -42,6 +52,7 @@ def evaluate(
     batch_size: int,
     criterion: nn.Module,
     device: str,
+    image_size: int,
 ) -> float:
     """サンプル一覧に対する平均損失を計算する。"""
     model.eval()
@@ -49,7 +60,7 @@ def evaluate(
 
     with torch.no_grad():
         for batch_samples in iter_batches(samples, batch_size=batch_size, shuffle=False):
-            x = build_image_batch(batch_samples)
+            x = build_image_batch(batch_samples, image_size=image_size)
             y = build_target_batch(batch_samples)
             x, y = x.to(device), y.to(device)
             pred = model(x)
@@ -76,6 +87,7 @@ def train(
     """
     model = RegressionModel(pretrained_model_name=cfg.model_name)
     model.to(cfg.device)
+    image_size = cfg.image_size
 
     # 必要なパラメータのみ学習する
     optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=cfg.lr)
@@ -94,7 +106,7 @@ def train(
         running_loss = 0.0
 
         for batch_samples in iter_batches(train_samples, batch_size=batch_size, shuffle=True):
-            x = build_image_batch(batch_samples)
+            x = build_image_batch(batch_samples, image_size=image_size)
             y = build_target_batch(batch_samples)
             x, y = x.to(cfg.device), y.to(cfg.device)
 
@@ -113,6 +125,7 @@ def train(
             batch_size=batch_size,
             criterion=criterion,
             device=cfg.device,
+            image_size=image_size,
         )
 
         print(f"Epoch {epoch}/{cfg.num_epochs}, Train Loss: {epoch_train_loss:.4f}, Valid Loss: {epoch_valid_loss:.4f}")

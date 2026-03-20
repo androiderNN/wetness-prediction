@@ -7,9 +7,9 @@ from wetness_regression.utils.wrpath import TRAIN_IMAGE_DIR, TEST_IMAGE_DIR
 from wetness_regression.dataset.load_dataset import WetnessSample
 
 
-def plot_sample(sample: WetnessSample):
+def plot_sample(sample: WetnessSample, figsize: tuple[int] = (6, 6)):
     """1サンプル分の波形プロットを作成して Figure を返す。"""
-    fig = plt.figure(figsize=(6, 6))
+    fig = plt.figure(figsize=figsize)
 
     plt.plot(sample.waveform)
     plt.subplots_adjust(left=0, right=1, bottom=0, top=1)
@@ -19,7 +19,7 @@ def plot_sample(sample: WetnessSample):
     return fig
 
 
-def make_image(samples: list[WetnessSample]) -> Path:
+def make_image(samples: list[WetnessSample], figsize: tuple[int] = (6, 6), dpi: int = 100) -> Path:
     """
     データを画像として保存する
 
@@ -38,9 +38,9 @@ def make_image(samples: list[WetnessSample]) -> Path:
     os.mkdir(out_dir)
 
     for sample in samples:
-        fig = plot_sample(sample)
+        fig = plot_sample(sample, figsize)
 
-        plt.savefig(out_dir / f"{sample.id}.jpg")
+        plt.savefig(out_dir / f"{sample.id}.jpg", dpi=dpi)
         plt.close(fig)
     
     return out_dir
