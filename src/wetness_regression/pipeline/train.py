@@ -1,30 +1,83 @@
-from pathlib import Path
-from dataclasses import dataclass, asdict
+import random
+from dataclasses import asdict
 import pandas as pd
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import DataLoader
 
 from wetness_regression.utils.config import TrainingConfig
 from wetness_regression.model.regression_model import RegressionModel
+from wetness_regression.dataset.load_image import WetnessImageSample
 
 
-def train(cfg: TrainingConfig, train_dataloader: DataLoader, valid_dataloader: DataLoader):
+def build_image_batch(samples: list[WetnessImageSample]) -> torch.Tensor:
+    """サンプル一覧から画像テンソルを構築する。"""
+    images = [torch.from_numpy(sample.image).permute(2, 0, 1).float() / 255.0 for sample in samples]
+    return torch.stack(images)
+
+
+def build_target_batch(samples: list[WetnessImageSample]) -> torch.Tensor:
+    """サンプル一覧から教師信号テンソルを構築する。"""
+    targets = [float(sample.target) for sample in samples]
+    return torch.tensor(targets, dtype=torch.float32).unsqueeze(1)
+
+
+def iter_batches(
+    samples: list[WetnessImageSample],
+    batch_size: int,
+    shuffle: bool,
+) -> list[list[WetnessImageSample]]:
+    """サンプル一覧を固定サイズのバッチへ分割する。"""
+    ordered_samples = list(samples)
+    if shuffle:
+        random.shuffle(ordered_samples)
+
+    return [ordered_samples[i:i + batch_size] for i in range(0, len(ordered_samples), batch_size)]
+
+
+def evaluate(
+    model: RegressionModel,
+    samples: list[WetnessImageSample],
+    batch_size: int,
+    criterion: nn.Module,
+    device: str,
+) -> float:
+    """サンプル一覧に対する平均損失を計算する。"""
+    model.eval()
+    running_loss = 0.0
+
+    with torch.no_grad():
+        for batch_samples in iter_batches(samples, batch_size=batch_size, shuffle=False):
+            x = build_image_batch(batch_samples)
+            y = build_target_batch(batch_samples)
+            x, y = x.to(device), y.to(device)
+            pred = model(x)
+            loss = criterion(pred, y)
+            running_loss += loss.item() * len(batch_samples)
+
+    return running_loss / len(samples)
+
+
+def train(
+    cfg: TrainingConfig,
+    train_samples: list[WetnessImageSample],
+    valid_samples: list[WetnessImageSample],
+    batch_size: int = 16,
+):
     """
     学習を実行する
 
     Args:
         cfg: 学習設定
-        dataloader: DataLoader
+        train_samples: 学習用サンプル
+        valid_samples: 検証用サンプル
+        batch_size: バッチサイズ
     """
     model = RegressionModel(pretrained_model_name=cfg.model_name)
     model.to(cfg.device)
-    model.train() # Set model to training mode
 
     # 必要なパラメータのみ学習する
     optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=cfg.lr)
-    # TODO: 損失関数の選択
     criterion = nn.MSELoss()
 
     print(f"\nStarting training.")
@@ -36,41 +89,30 @@ def train(cfg: TrainingConfig, train_dataloader: DataLoader, valid_dataloader: D
     best_model = None
 
     for epoch in range(cfg.num_epochs):
-        # 学習ステップ
         model.train()
         running_loss = 0.0
 
-        for x, y in train_dataloader:
+        for batch_samples in iter_batches(train_samples, batch_size=batch_size, shuffle=True):
+            x = build_image_batch(batch_samples)
+            y = build_target_batch(batch_samples)
             x, y = x.to(cfg.device), y.to(cfg.device)
 
-            # 勾配の初期化
             optimizer.zero_grad()
-
             pred = model(x)
-            # targets = targets.float()
-
             loss = criterion(pred, y)
-
-            # パラメータ更新
             loss.backward()
             optimizer.step()
 
-            running_loss += loss.item() * x.size(0)
+            running_loss += loss.item() * len(batch_samples)
 
-        epoch_train_loss = running_loss / len(train_dataloader.dataset)
-
-        # 検証ステップ
-        model.eval()
-        valid_running_loss = 0.0
-
-        with torch.no_grad():
-            for x, y in valid_dataloader:
-                x, y = x.to(cfg.device), y.to(cfg.device)
-                pred = model(x)
-                loss = criterion(pred, y)
-                valid_running_loss += loss.item() * x.size(0)
-
-        epoch_valid_loss = valid_running_loss / len(valid_dataloader.dataset)
+        epoch_train_loss = running_loss / len(train_samples)
+        epoch_valid_loss = evaluate(
+            model,
+            valid_samples,
+            batch_size=batch_size,
+            criterion=criterion,
+            device=cfg.device,
+        )
 
         print(f"Epoch {epoch}/{cfg.num_epochs}, Train Loss: {epoch_train_loss:.4f}, Valid Loss: {epoch_valid_loss:.4f}")
 

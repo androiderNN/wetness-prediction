@@ -1,16 +1,16 @@
 import pandas as pd
 import torch
-from torch.utils.data import DataLoader
 
 from wetness_regression.utils.config import TrainingConfig
 from wetness_regression.model.regression_model import RegressionModel
-from wetness_regression.dataset.load_image import WetnessImageDataset
+from wetness_regression.dataset.load_image import WetnessImageSample
+from wetness_regression.pipeline.train import build_image_batch, iter_batches
 
 
 def inference(
     model: RegressionModel,
     cfg: TrainingConfig,
-    dataloader: DataLoader,
+    samples: list[WetnessImageSample],
     export: bool = False
 ) -> pd.DataFrame:
     """
@@ -19,9 +19,9 @@ def inference(
     Args:
         model: 学習済みモデル
         cfg: 設定
-        dataloader: テストデータの DataLoader
+        samples: テスト用サンプル一覧
         export: submission.csv を作成するかどうか
-    
+
     Returns:
         result_df: id, pred のDataFrame
     """
@@ -31,13 +31,13 @@ def inference(
     result = list()
 
     with torch.no_grad():
-        for batch_idx, (images, _) in enumerate(dataloader):
+        for batch_samples in iter_batches(samples, batch_size=32, shuffle=False):
+            images = build_image_batch(batch_samples)
             images = images.to(cfg.device)
             pred = model(images)
 
-            # バッチ内の各サンプルの予測値を結果に追加
-            for i in range(images.shape[0]):
-                result.append([batch_idx * dataloader.batch_size + i, float(pred[i])])
+            for sample, pred_value in zip(batch_samples, pred):
+                result.append([sample.id, float(pred_value.item())])
     
     result_df = pd.DataFrame(result, columns=["id", "pred"])
 
