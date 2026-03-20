@@ -42,6 +42,6 @@ def inference(
     result_df = pd.DataFrame(result, columns=["id", "pred"])
 
     if export:
-        result_df.to_csv(cfg.paths.submission_path)
+        result_df.to_csv(cfg.paths.submission_path, index=False, header=False)
     
     return result_df
