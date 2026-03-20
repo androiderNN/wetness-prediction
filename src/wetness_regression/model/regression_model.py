@@ -1,9 +1,6 @@
 import torch
 import torch.nn as nn
-import torch.optim as optim
-from torch.utils.data import DataLoader, TensorDataset, Dataset # Datasetをインポート
 import torchvision.models as models # 一般的な事前学習済みモデルのためにtorchvisionを想定
-import os
 
 class RegressionModel(nn.Module):
     def __init__(self, num_output_features=1, pretrained_model_name='resnet18'):
@@ -35,4 +32,5 @@ class RegressionModel(nn.Module):
             raise ValueError(f"事前学習済みモデル '{pretrained_model_name}' はサポートされていません。'resnet18'、'vit_b_16'、'swin_t'から選択してください。")
 
     def forward(self, x):
-        return self.base_model(x)
+        raw_pred = self.base_model(x)
+        return torch.sigmoid(raw_pred) * 100
