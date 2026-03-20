@@ -40,7 +40,7 @@ def make_image(samples: list[WetnessSample], figsize: tuple[float] = (2.24, 2.24
     for sample in samples:
         fig = plot_sample(sample, figsize)
 
-        plt.savefig(out_dir / f"{sample.id}.jpg", dpi=dpi)
+        plt.savefig(out_dir / f"{sample.id}.png", dpi=dpi)
         plt.close(fig)
     
     return out_dir

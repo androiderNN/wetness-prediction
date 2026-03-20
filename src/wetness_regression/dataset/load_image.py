@@ -21,7 +21,7 @@ class WetnessImageSample(WetnessSample):
     @classmethod
     def from_wetnesssample(cls, wnsample: WetnessSample, img_dir: Path) -> "WetnessImageSample":
         """WetnessSampleから構築する"""
-        img_path = img_dir / f"{wnsample.id}.jpg"
+        img_path = img_dir / f"{wnsample.id}.png"
 
         if not os.path.exists(img_path):
             raise FileNotFoundError(f"{img_path} not exist.")
