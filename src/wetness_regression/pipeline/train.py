@@ -1,5 +1,6 @@
 import random
 from dataclasses import asdict
+import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import torch
@@ -28,10 +29,13 @@ def build_image_batch(samples: list[WetnessImageSample], image_size: int) -> tor
     return batch
 
 
-def build_target_batch(samples: list[WetnessImageSample]) -> torch.Tensor:
+def build_target_batch(samples: list[WetnessImageSample], use_log_scale: bool) -> torch.Tensor:
     """サンプル一覧から教師信号テンソルを構築する。"""
     targets = [float(sample.target) for sample in samples]
-    return torch.tensor(targets, dtype=torch.float32).unsqueeze(1)
+    y = torch.tensor(targets, dtype=torch.float32).unsqueeze(1)
+    if use_log_scale:
+        y = torch.log1p(y)
+    return y
 
 
 def iter_batches(
@@ -48,34 +52,50 @@ def iter_batches(
 
 
 def evaluate(
+    cfg: TrainingConfig,
     model: RegressionModel,
     samples: list[WetnessImageSample],
-    batch_size: int,
     criterion: nn.Module,
-    device: str,
-    image_size: int,
-) -> float:
-    """サンプル一覧に対する平均損失を計算する。"""
+) -> tuple[float, float | None]:
+    """
+    サンプル一覧に対する平均損失を計算する。
+    use_log_scale=Trueの場合、元スケールでのRMSEも計算する。
+
+    Returns:
+        (loss_log_space, loss_original_scale)
+        use_log_scale=Falseの場合、loss_original_scaleはNone
+    """
     model.eval()
     running_loss = 0.0
+    squared_errors_orig = [] if cfg.use_log_scale else None
 
     with torch.no_grad():
-        for batch_samples in iter_batches(samples, batch_size=batch_size, shuffle=False):
-            x = build_image_batch(batch_samples, image_size=image_size)
-            y = build_target_batch(batch_samples)
-            x, y = x.to(device), y.to(device)
+        for batch_samples in iter_batches(samples, batch_size=cfg.batch_size, shuffle=False):
+            x = build_image_batch(batch_samples, image_size=cfg.image_size)
+            y = build_target_batch(batch_samples, use_log_scale=cfg.use_log_scale)
+            x, y = x.to(cfg.device), y.to(cfg.device)
             pred = model(x)
             loss = criterion(pred, y)
             running_loss += loss.item() * len(batch_samples)
 
-    return running_loss / len(samples)
+            # use_log_scale=Trueの場合、元スケール損失も計算
+            if cfg.use_log_scale and squared_errors_orig is not None:
+                y_orig = torch.tensor([float(s.target) for s in batch_samples], dtype=torch.float32).unsqueeze(1)
+                y_orig = y_orig.to(cfg.device)
+                pred_orig = torch.expm1(pred)
+                errors = pred_orig - y_orig
+                squared_errors_orig.extend((errors ** 2).cpu().numpy().flatten())
+
+    loss_log = running_loss / len(samples)
+    loss_orig = float(np.sqrt(np.mean(squared_errors_orig))) if squared_errors_orig is not None else None
+
+    return loss_log, loss_orig
 
 
 def train(
     cfg: TrainingConfig,
     train_samples: list[WetnessImageSample],
     valid_samples: list[WetnessImageSample],
-    batch_size: int = 16,
 ):
     """
     学習を実行する
@@ -86,9 +106,11 @@ def train(
         valid_samples: 検証用サンプル
         batch_size: バッチサイズ
     """
-    model = RegressionModel(pretrained_model_name=cfg.model_name, freeze_backbone=cfg.freeze_backbone)
+    model = RegressionModel(
+        pretrained_model_name=cfg.model_name,
+        freeze_backbone=cfg.freeze_backbone,
+    )
     model.to(cfg.device)
-    image_size = cfg.image_size
 
     # 必要なパラメータのみ学習する
     optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=cfg.lr)
@@ -107,9 +129,9 @@ def train(
         model.train()
         running_loss = 0.0
 
-        for batch_samples in iter_batches(train_samples, batch_size=batch_size, shuffle=True):
-            x = build_image_batch(batch_samples, image_size=image_size)
-            y = build_target_batch(batch_samples)
+        for batch_samples in iter_batches(train_samples, batch_size=cfg.batch_size, shuffle=True):
+            x = build_image_batch(batch_samples, image_size=cfg.image_size)
+            y = build_target_batch(batch_samples, use_log_scale=cfg.use_log_scale)
             x, y = x.to(cfg.device), y.to(cfg.device)
 
             optimizer.zero_grad()
@@ -120,21 +142,23 @@ def train(
 
             running_loss += loss.item() * len(batch_samples)
 
-        epoch_train_loss = running_loss / len(train_samples)
-        epoch_valid_loss = evaluate(
-            model,
-            valid_samples,
-            batch_size=batch_size,
-            criterion=criterion,
-            device=cfg.device,
-            image_size=image_size,
-        )
-
-        print(f"Epoch {epoch}/{cfg.num_epochs}, Train Loss: {epoch_train_loss:.4f}, Valid Loss: {epoch_valid_loss:.4f}")
-
         scheduler.step()
 
+        # lossの計算
+        epoch_train_loss = running_loss / len(train_samples)
+
+        epoch_valid_loss, epoch_valid_loss_orig = evaluate(
+            cfg,
+            model,
+            valid_samples,
+            criterion=criterion,
+        )
+
         loss_log.append([epoch, epoch_train_loss, epoch_valid_loss])
+        print(f"Epoch {epoch}/{cfg.num_epochs}, Train Loss: {epoch_train_loss:.4f}, Valid Loss: {epoch_valid_loss:.4f}")
+
+        if cfg.use_log_scale and epoch_valid_loss_orig is not None:
+            print(f"Valid Loss (original scale): {epoch_valid_loss_orig:.4f})")
 
         # ログの更新
         log_df = pd.DataFrame(loss_log)

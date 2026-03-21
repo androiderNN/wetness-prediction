@@ -38,7 +38,11 @@ def inference(
             pred = model(images)
 
             for sample, pred_value in zip(batch_samples, pred):
-                result.append([sample.id, float(pred_value.item())])
+                value = float(pred_value.item())
+                if cfg.use_log_scale:
+                    value = float(torch.expm1(pred_value).item())
+                value = max(value, 0.0)
+                result.append([sample.id, value])
     
     result_df = pd.DataFrame(result, columns=["id", "pred"])
 

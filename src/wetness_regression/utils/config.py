@@ -8,6 +8,21 @@ from wetness_regression.utils.wrpath import OUTPUT_DIR
 from wetness_regression.model.regression_model import get_model_input_size
 
 
+def _parse_yaml_bool(value: object, field_name: str) -> bool:
+    """YAML値を厳密に bool へ変換する。"""
+    if isinstance(value, bool):
+        return value
+
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"true", "1", "yes", "on"}:
+            return True
+        if normalized in {"false", "0", "no", "off"}:
+            return False
+
+    raise ValueError(f"{field_name} must be bool")
+
+
 class output_paths:
     """学習結果の出力に使用するパスの設定"""
 
@@ -41,7 +56,9 @@ class TrainingConfig:
     """エポック数"""
     lr: float
     """学習率"""
-    device: str
+    batch_size: int = 16
+    """学習時のバッチサイズ"""
+    device: str = "cpu"
     """使用するデバイス"""
     scheduler: str = "linear_decay"
     """学習率スケジューラ名。'none' / 'cosine' / 'warmup_cosine' / 'linear_decay' / 'reduce_on_plateau' / 'step'"""
@@ -53,6 +70,8 @@ class TrainingConfig:
     """入力画像サイズ（正方形、一辺）"""
     paths: output_paths = None
     """出力に関連するパス"""
+    use_log_scale: bool = False
+    """True の場合、目的変数に log1p/expm1 変換を適用する"""
 
     def __post_init__(self):
         if self.output_dir is None:
@@ -90,7 +109,9 @@ def load_trainingconfig(yaml_path: Path | str) -> TrainingConfig:
     # 型変換
     config_dict["num_epochs"] = int(config_dict["num_epochs"])
     config_dict["lr"] = float(config_dict["lr"])
-    config_dict["freeze_backbone"] = bool(config_dict["freeze_backbone"])
+    config_dict["batch_size"] = int(config_dict["batch_size"])
+    config_dict["freeze_backbone"] = _parse_yaml_bool(config_dict["freeze_backbone"], "freeze_backbone")
+    config_dict["use_log_scale"] = _parse_yaml_bool(config_dict.get("use_log_scale", False), "use_log_scale")
 
     if "output_dir" in config_dict and config_dict["output_dir"] is not None:
         config_dict["output_dir"] = Path(config_dict["output_dir"])
