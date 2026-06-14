@@ -4,7 +4,6 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from wetness_regression.model.lr_scheduler import build_scheduler
@@ -55,19 +54,19 @@ def evaluate(
     cfg: TrainingConfig,
     model: RegressionModel,
     samples: list[WetnessImageSample],
-    criterion: nn.Module,
-) -> tuple[float, float | None]:
+) -> tuple[float, float]:
     """
-    サンプル一覧に対する平均損失を計算する。
-    use_log_scale=Trueの場合、元スケールでのRMSEも計算する。
+    サンプル一覧に対するRMSEを正しく計算する。
+    全サンプルの二乗誤差を蓄積してから sqrt を取るため、
+    バッチ分割に依存しない正確な値を返す。
 
     Returns:
         (loss_log_space, loss_original_scale)
-        use_log_scale=Falseの場合、loss_original_scaleはNone
+        use_log_scale=Falseの場合、両者は同じ値
     """
     model.eval()
-    running_loss = 0.0
-    squared_errors_orig = [] if cfg.use_log_scale else None
+    squared_errors_log = []
+    squared_errors_orig = []
 
     with torch.no_grad():
         for batch_samples in iter_batches(samples, batch_size=cfg.batch_size, shuffle=False):
@@ -75,19 +74,24 @@ def evaluate(
             y = build_target_batch(batch_samples, use_log_scale=cfg.use_log_scale)
             x, y = x.to(cfg.device), y.to(cfg.device)
             pred = model(x)
-            loss = criterion(pred, y)
-            running_loss += loss.item() * len(batch_samples)
 
-            # use_log_scale=Trueの場合、元スケール損失も計算
-            if cfg.use_log_scale and squared_errors_orig is not None:
-                y_orig = torch.tensor([float(s.target) for s in batch_samples], dtype=torch.float32).unsqueeze(1)
-                y_orig = y_orig.to(cfg.device)
+            # log空間の二乗誤差を蓄積
+            errors_log = pred - y
+            squared_errors_log.extend((errors_log ** 2).cpu().numpy().flatten())
+
+            # 元スケールの二乗誤差を蓄積
+            if cfg.use_log_scale:
                 pred_orig = torch.expm1(pred)
-                errors = pred_orig - y_orig
-                squared_errors_orig.extend((errors ** 2).cpu().numpy().flatten())
+                y_orig = torch.tensor(
+                    [float(s.target) for s in batch_samples], dtype=torch.float32
+                ).unsqueeze(1).to(cfg.device)
+                errors_orig = pred_orig - y_orig
+            else:
+                errors_orig = errors_log
+            squared_errors_orig.extend((errors_orig ** 2).cpu().numpy().flatten())
 
-    loss_log = running_loss / len(samples)
-    loss_orig = float(np.sqrt(np.mean(squared_errors_orig))) if squared_errors_orig is not None else None
+    loss_log = float(np.sqrt(np.mean(squared_errors_log)))
+    loss_orig = float(np.sqrt(np.mean(squared_errors_orig)))
 
     return loss_log, loss_orig
 
@@ -151,24 +155,22 @@ def train(
             cfg,
             model,
             valid_samples,
-            criterion=criterion,
         )
 
-        loss_log.append([epoch, epoch_train_loss, epoch_valid_loss])
-        print(f"Epoch {epoch}/{cfg.num_epochs}, Train Loss: {epoch_train_loss:.4f}, Valid Loss: {epoch_valid_loss:.4f}")
-
-        if cfg.use_log_scale and epoch_valid_loss_orig is not None:
-            print(f"Valid Loss (original scale): {epoch_valid_loss_orig:.4f})")
+        loss_log.append([epoch, epoch_train_loss, epoch_valid_loss_orig])
+        print(f"Epoch {epoch}/{cfg.num_epochs}, Train Loss: {epoch_train_loss:.4f}, Valid Loss: {epoch_valid_loss_orig:.4f}")
+        if cfg.use_log_scale:
+            print(f"Valid Loss (log scale): {epoch_valid_loss:.4f}")
 
         # ログの更新
         log_df = pd.DataFrame(loss_log)
         log_df.columns = ["epoch", "train", "valid"]
         log_df.to_csv(cfg.paths.log_path, index=False)
 
-        # ロスが下がった場合はモデルを更新
-        if epoch_valid_loss < best_loss:
+        # ロスが下がった場合はモデルを更新（元スケールRMSEで判定）
+        if epoch_valid_loss_orig < best_loss:
             best_epoch = epoch
-            best_loss = epoch_valid_loss
+            best_loss = epoch_valid_loss_orig
             best_model = model.state_dict()
 
             # モデルの保存
