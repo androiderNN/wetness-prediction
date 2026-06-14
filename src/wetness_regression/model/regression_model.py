@@ -9,11 +9,12 @@ def get_model_input_size(model_name: str) -> int:
         "resnet18": 224,
         "vit_b_16": 224,
         "swin_t": 224,
+        "efficientnet_b1": 240,
     }
 
     if model_name not in model_input_size:
         raise ValueError(
-            f"supported models are ['resnet18'、'vit_b_16'、'swin_t']"
+            f"supported models are ['resnet18'、'vit_b_16'、'swin_t'、'efficientnet_b1']"
         )
 
     return model_input_size[model_name]
@@ -29,6 +30,8 @@ class RegressionModel(nn.Module):
             self.base_model = models.vit_b_16(weights=models.ViT_B_16_Weights.DEFAULT)
         elif pretrained_model_name == 'swin_t':
             self.base_model = models.swin_t(weights=models.Swin_T_Weights.DEFAULT)
+        elif pretrained_model_name == 'efficientnet_b1':
+            self.base_model = models.efficientnet_b1(weights=models.EfficientNet_B1_Weights.DEFAULT)
         else:
             raise ValueError(f"model {pretrained_model_name} not defined.")
 
@@ -47,6 +50,9 @@ class RegressionModel(nn.Module):
         elif pretrained_model_name == 'swin_t':
             num_ftrs = self.base_model.head.in_features
             self.base_model.head = nn.Linear(num_ftrs, num_output_features)
+        elif pretrained_model_name == 'efficientnet_b1':
+            num_ftrs = self.base_model.classifier[1].in_features
+            self.base_model.classifier[1] = nn.Linear(num_ftrs, num_output_features)
 
     def forward(self, x):
         return self.base_model(x)
