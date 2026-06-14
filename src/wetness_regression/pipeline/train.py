@@ -113,11 +113,16 @@ def train(
     model = RegressionModel(
         pretrained_model_name=cfg.model_name,
         freeze_backbone=cfg.freeze_backbone,
+        dropout_rate=cfg.dropout_rate,
     )
     model.to(cfg.device)
 
     # 必要なパラメータのみ学習する
-    optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=cfg.lr)
+    optimizer = optim.AdamW(
+        filter(lambda p: p.requires_grad, model.parameters()),
+        lr=cfg.lr,
+        weight_decay=cfg.weight_decay,
+    )
     criterion = RMSELoss()
     scheduler = build_scheduler(cfg.scheduler, optimizer, cfg.num_epochs)
 

@@ -72,6 +72,10 @@ class TrainingConfig:
     """出力に関連するパス"""
     use_log_scale: bool = False
     """True の場合、目的変数に log1p/expm1 変換を適用する"""
+    weight_decay: float = 0.0
+    """AdamW の weight decay（L2正則化）の係数"""
+    dropout_rate: float = 0.0
+    """回帰ヘッドの Dropout 率（0.0 で無効）"""
 
     def __post_init__(self):
         if self.output_dir is None:
@@ -112,6 +116,8 @@ def load_trainingconfig(yaml_path: Path | str) -> TrainingConfig:
     config_dict["batch_size"] = int(config_dict["batch_size"])
     config_dict["freeze_backbone"] = _parse_yaml_bool(config_dict["freeze_backbone"], "freeze_backbone")
     config_dict["use_log_scale"] = _parse_yaml_bool(config_dict.get("use_log_scale", False), "use_log_scale")
+    config_dict["weight_decay"] = float(config_dict.get("weight_decay", 0.0))
+    config_dict["dropout_rate"] = float(config_dict.get("dropout_rate", 0.0))
 
     if "output_dir" in config_dict and config_dict["output_dir"] is not None:
         config_dict["output_dir"] = Path(config_dict["output_dir"])

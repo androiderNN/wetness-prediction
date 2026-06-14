@@ -20,7 +20,7 @@ def get_model_input_size(model_name: str) -> int:
     return model_input_size[model_name]
 
 class RegressionModel(nn.Module):
-    def __init__(self, pretrained_model_name, freeze_backbone=True, num_output_features=1):
+    def __init__(self, pretrained_model_name, freeze_backbone=True, num_output_features=1, dropout_rate=0.0):
         super().__init__()
 
         # 事前学習済みモデルをロード
@@ -40,19 +40,31 @@ class RegressionModel(nn.Module):
             for param in self.base_model.parameters():
                 param.requires_grad = False
 
-        # 最終層を回帰ヘッドに置き換え
+        # 最終層を回帰ヘッドに置き換え（Dropout + Linear）
         if pretrained_model_name == 'resnet18':
             num_ftrs = self.base_model.fc.in_features
-            self.base_model.fc = nn.Linear(num_ftrs, num_output_features)
+            self.base_model.fc = nn.Sequential(
+                nn.Dropout(dropout_rate),
+                nn.Linear(num_ftrs, num_output_features),
+            )
         elif pretrained_model_name == 'vit_b_16':
             num_ftrs = self.base_model.heads.head.in_features
-            self.base_model.heads.head = nn.Linear(num_ftrs, num_output_features)
+            self.base_model.heads.head = nn.Sequential(
+                nn.Dropout(dropout_rate),
+                nn.Linear(num_ftrs, num_output_features),
+            )
         elif pretrained_model_name == 'swin_t':
             num_ftrs = self.base_model.head.in_features
-            self.base_model.head = nn.Linear(num_ftrs, num_output_features)
+            self.base_model.head = nn.Sequential(
+                nn.Dropout(dropout_rate),
+                nn.Linear(num_ftrs, num_output_features),
+            )
         elif pretrained_model_name == 'efficientnet_b1':
             num_ftrs = self.base_model.classifier[1].in_features
-            self.base_model.classifier[1] = nn.Linear(num_ftrs, num_output_features)
+            self.base_model.classifier[1] = nn.Sequential(
+                nn.Dropout(dropout_rate),
+                nn.Linear(num_ftrs, num_output_features),
+            )
 
     def forward(self, x):
         return self.base_model(x)
