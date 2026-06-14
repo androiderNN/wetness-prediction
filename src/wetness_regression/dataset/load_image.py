@@ -6,7 +6,7 @@ import numpy.typing as npt
 import cv2
 import torch
 import torch.nn.functional as F
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import GroupShuffleSplit
 
 from wetness_regression.utils.wrpath import TRAIN_CSV, TEST_CSV, TRAIN_IMAGE_DIR, TEST_IMAGE_DIR
 from wetness_regression.dataset.load_dataset import WetnessSample, load_csv
@@ -56,12 +56,13 @@ def load_split_samples(
     """train/valid/test の画像付きサンプルをまとめて返す。"""
     train_all_samples = load_image_samples(TRAIN_CSV, TRAIN_IMAGE_DIR)
 
-    train_samples, valid_samples = train_test_split(
-        train_all_samples,
-        test_size=valid_size,
-        random_state=seed,
-        shuffle=True,
-    )
+    # 樹種単位で分割する（同一樹種が train/valid 両方に分散しない）
+    species_groups = [sample.species for sample in train_all_samples]
+    gss = GroupShuffleSplit(n_splits=1, test_size=valid_size, random_state=seed)
+    train_idx, valid_idx = next(gss.split(train_all_samples, groups=species_groups))
+
+    train_samples = [train_all_samples[i] for i in train_idx]
+    valid_samples = [train_all_samples[i] for i in valid_idx]
 
     test_samples = load_image_samples(TEST_CSV, TEST_IMAGE_DIR)
 
