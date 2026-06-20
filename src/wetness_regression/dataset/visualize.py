@@ -9,8 +9,10 @@ from wetness_regression.utils.wrpath import TRAIN_CSV, TEST_CSV, TRAIN_IMAGE_DIR
 from wetness_regression.dataset.load_dataset import WetnessSample, load_csv
 from wetness_regression.dataset.image_transform import (
     first_derivative_map,
+    gaf_difference,
     gramian_angular_field,
     recurrence_plot,
+    recurrence_plot_derivative,
     spectrum_correlation_map,
 )
 
@@ -20,6 +22,8 @@ METHOD_TO_FN = {
     "recurrence": recurrence_plot,
     "correlation": spectrum_correlation_map,
     "derivative": first_derivative_map,
+    "gaf_difference": gaf_difference,
+    "recurrence_derivative": recurrence_plot_derivative,
 }
 
 
@@ -126,7 +130,7 @@ def compute_global_channel_minmax(
 
 def make_image_three_channel(
     samples: list[WetnessSample],
-    methods: tuple[str, str, str] = ("gaf", "recurrence", "derivative"),
+    methods: tuple[str, str, str] = ("recurrence", "recurrence_derivative", "gaf_difference"),
     size: int = 224,
     channel_minmax: tuple[tuple[float, float], tuple[float, float], tuple[float, float]] | None = None,
 ) -> Path:
@@ -153,7 +157,7 @@ def make_image_three_channel(
 
 
 if __name__ == '__main__':
-    methods = ("gaf", "recurrence", "derivative")
+    methods = ("recurrence", "recurrence_derivative", "gaf_difference")
     train_samples = load_csv(TRAIN_CSV)
     test_samples = load_csv(TEST_CSV)
 

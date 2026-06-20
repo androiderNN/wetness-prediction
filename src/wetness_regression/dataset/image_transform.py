@@ -82,3 +82,35 @@ def first_derivative_map(
 	m = np.outer(d, d)
 	return m.astype(np.float32)
 
+
+def recurrence_plot_derivative(
+	waveform: list[float],
+	size: int = 224,
+	global_min: float = -0.6,
+	global_max: float = 2.1,
+) -> npt.NDArray[np.float32]:
+	"""一次微分波形に対して Recurrence Plot を適用する。高ランクで非外積の2D表現。"""
+	x = _resample_to_size(waveform, size)
+	x = _scale_01(x, global_min, global_max)
+	d = np.diff(x, prepend=x[0])
+	# 微分値の範囲は [-1, 1] に概ね収まるが、Recurrenceとしては [0, 1] が望ましい
+	m = 1.0 - np.abs(d[:, None] - d[None, :])
+	m = np.clip(m, 0.0, 1.0)
+	return m.astype(np.float32)
+
+
+def gaf_difference(
+	waveform: list[float],
+	size: int = 224,
+	global_min: float = -0.6,
+	global_max: float = 2.1,
+) -> npt.NDArray[np.float32]:
+	"""Gramian Angular Difference Field (GADF) を計算する。"""
+	return gramian_angular_field(
+		waveform=waveform,
+		size=size,
+		global_min=global_min,
+		global_max=global_max,
+		kind="difference",
+	)
+
