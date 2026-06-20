@@ -137,12 +137,14 @@ def train(
             num_species=num_species,
             freeze_backbone=cfg.freeze_backbone,
             dropout_rate=cfg.dropout_rate,
+            bottleneck_dim=cfg.bottleneck_dim,
         )
     else:
         model = RegressionModel(
             pretrained_model_name=cfg.model_name,
             freeze_backbone=cfg.freeze_backbone,
             dropout_rate=cfg.dropout_rate,
+            bottleneck_dim=cfg.bottleneck_dim,
         )
     model.to(cfg.device)
 

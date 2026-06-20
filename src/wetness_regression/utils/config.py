@@ -80,6 +80,8 @@ class TrainingConfig:
     """True の場合、樹種分類を補助タスクとするマルチタスク学習を行う"""
     species_loss_weight: float = 0.5
     """マルチタスク学習時の樹種分類 loss の重み"""
+    bottleneck_dim: int = 0
+    """回帰ヘッドのボトルネック層の次元数（0 で無効）。768→bottleneck_dim→1 のように中間層を挟む"""
 
     def __post_init__(self):
         if self.output_dir is None:
@@ -124,6 +126,7 @@ def load_trainingconfig(yaml_path: Path | str) -> TrainingConfig:
     config_dict["dropout_rate"] = float(config_dict.get("dropout_rate", 0.0))
     config_dict["use_multi_task"] = _parse_yaml_bool(config_dict.get("use_multi_task", False), "use_multi_task")
     config_dict["species_loss_weight"] = float(config_dict.get("species_loss_weight", 0.5))
+    config_dict["bottleneck_dim"] = int(config_dict.get("bottleneck_dim", 0))
 
     if "output_dir" in config_dict and config_dict["output_dir"] is not None:
         config_dict["output_dir"] = Path(config_dict["output_dir"])

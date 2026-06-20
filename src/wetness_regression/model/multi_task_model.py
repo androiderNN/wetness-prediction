@@ -11,6 +11,7 @@ class MultiTaskModel(nn.Module):
         num_species: int,
         freeze_backbone: bool = True,
         dropout_rate: float = 0.0,
+        bottleneck_dim: int = 0,
     ):
         super().__init__()
 
@@ -44,13 +45,26 @@ class MultiTaskModel(nn.Module):
         # 共有 Dropout
         self.dropout = nn.Dropout(dropout_rate)
 
+        # ボトルネック層（任意）
+        head_dim = num_ftrs
+        self.bottleneck = None
+        if bottleneck_dim > 0:
+            self.bottleneck = nn.Sequential(
+                nn.Linear(num_ftrs, bottleneck_dim),
+                nn.ReLU(),
+                nn.Dropout(dropout_rate),
+            )
+            head_dim = bottleneck_dim
+
         # タスク固有ヘッド
-        self.regression_head = nn.Linear(num_ftrs, 1)  # 含水率
-        self.classification_head = nn.Linear(num_ftrs, num_species)  # 樹種
+        self.regression_head = nn.Linear(head_dim, 1)  # 含水率
+        self.classification_head = nn.Linear(head_dim, num_species)  # 樹種
 
     def forward(self, x):
         features = self.backbone(x)
         features = self.dropout(features)
+        if self.bottleneck is not None:
+            features = self.bottleneck(features)
         reg_out = self.regression_head(features)
         cls_out = self.classification_head(features)
         return reg_out, cls_out
