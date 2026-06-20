@@ -1,14 +1,14 @@
 import pandas as pd
 import torch
+import torch.nn as nn
 
 from wetness_regression.utils.config import TrainingConfig
-from wetness_regression.model.regression_model import RegressionModel
 from wetness_regression.dataset.load_image import WetnessImageSample
 from wetness_regression.pipeline.train import build_image_batch, iter_batches
 
 
 def inference(
-    model: RegressionModel,
+    model: nn.Module,
     cfg: TrainingConfig,
     samples: list[WetnessImageSample],
     export: bool = False
@@ -36,6 +36,10 @@ def inference(
             images = build_image_batch(batch_samples, image_size=image_size)
             images = images.to(cfg.device)
             pred = model(images)
+
+            # マルチタスクモデルは (回帰出力, 分類出力) のタプルを返す
+            if isinstance(pred, tuple):
+                pred = pred[0]
 
             for sample, pred_value in zip(batch_samples, pred):
                 value = float(pred_value.item())

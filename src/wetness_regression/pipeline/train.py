@@ -10,6 +10,7 @@ from wetness_regression.model.lr_scheduler import build_scheduler
 
 from wetness_regression.utils.config import TrainingConfig
 from wetness_regression.model.regression_model import RegressionModel, RMSELoss
+from wetness_regression.model.multi_task_model import MultiTaskModel
 from wetness_regression.dataset.load_image import WetnessImageSample
 
 
@@ -35,6 +36,15 @@ def build_target_batch(samples: list[WetnessImageSample], use_log_scale: bool) -
     if use_log_scale:
         y = torch.log1p(y)
     return y
+
+
+def build_species_batch(
+    samples: list[WetnessImageSample],
+    species_to_idx: dict[int, int],
+) -> torch.Tensor:
+    """サンプル一覧から樹種ラベルのテンソルを構築する（0-indexed のクラスインデックス）。"""
+    indices = [species_to_idx[sample.species] for sample in samples]
+    return torch.tensor(indices, dtype=torch.long)
 
 
 def iter_batches(
@@ -75,6 +85,10 @@ def evaluate(
             x, y = x.to(cfg.device), y.to(cfg.device)
             pred = model(x)
 
+            # マルチタスクモデルは (回帰出力, 分類出力) のタプルを返す
+            if isinstance(pred, tuple):
+                pred = pred[0]
+
             # log空間の二乗誤差を蓄積
             errors_log = pred - y
             squared_errors_log.extend((errors_log ** 2).cpu().numpy().flatten())
@@ -110,11 +124,26 @@ def train(
         valid_samples: 検証用サンプル
         batch_size: バッチサイズ
     """
-    model = RegressionModel(
-        pretrained_model_name=cfg.model_name,
-        freeze_backbone=cfg.freeze_backbone,
-        dropout_rate=cfg.dropout_rate,
-    )
+    # 樹種→クラスインデックスのマッピングを構築
+    species_to_idx: dict[int, int] | None = None
+    if cfg.use_multi_task:
+        unique_species = sorted({s.species for s in train_samples})
+        species_to_idx = {sp: idx for idx, sp in enumerate(unique_species)}
+        num_species = len(unique_species)
+        print(f"Multi-task mode: {num_species} species classes")
+
+        model = MultiTaskModel(
+            pretrained_model_name=cfg.model_name,
+            num_species=num_species,
+            freeze_backbone=cfg.freeze_backbone,
+            dropout_rate=cfg.dropout_rate,
+        )
+    else:
+        model = RegressionModel(
+            pretrained_model_name=cfg.model_name,
+            freeze_backbone=cfg.freeze_backbone,
+            dropout_rate=cfg.dropout_rate,
+        )
     model.to(cfg.device)
 
     # 必要なパラメータのみ学習する
@@ -124,6 +153,7 @@ def train(
         weight_decay=cfg.weight_decay,
     )
     criterion = RMSELoss()
+    cls_criterion = torch.nn.CrossEntropyLoss() if cfg.use_multi_task else None
     scheduler = build_scheduler(cfg.scheduler, optimizer, cfg.num_epochs)
 
     print(f"\nStarting training.")
@@ -137,6 +167,7 @@ def train(
     for epoch in range(cfg.num_epochs):
         model.train()
         running_loss = 0.0
+        running_cls_loss = 0.0
 
         for batch_samples in iter_batches(train_samples, batch_size=cfg.batch_size, shuffle=True):
             x = build_image_batch(batch_samples, image_size=cfg.image_size)
@@ -144,8 +175,18 @@ def train(
             x, y = x.to(cfg.device), y.to(cfg.device)
 
             optimizer.zero_grad()
-            pred = model(x)
-            loss = criterion(pred, y)
+
+            if cfg.use_multi_task:
+                pred_reg, pred_cls = model(x)
+                sp = build_species_batch(batch_samples, species_to_idx).to(cfg.device)
+                loss_reg = criterion(pred_reg, y)
+                loss_cls = cls_criterion(pred_cls, sp)
+                loss = loss_reg + cfg.species_loss_weight * loss_cls
+                running_cls_loss += loss_cls.item() * len(batch_samples)
+            else:
+                pred = model(x)
+                loss = criterion(pred, y)
+
             loss.backward()
             optimizer.step()
 
@@ -163,7 +204,11 @@ def train(
         )
 
         loss_log.append([epoch, epoch_train_loss, epoch_valid_loss_orig])
-        print(f"Epoch {epoch}/{cfg.num_epochs}, Train Loss: {epoch_train_loss:.4f}, Valid Loss: {epoch_valid_loss_orig:.4f}")
+        train_info = f"Epoch {epoch}/{cfg.num_epochs}, Train Loss: {epoch_train_loss:.4f}"
+        if cfg.use_multi_task:
+            epoch_train_cls_loss = running_cls_loss / len(train_samples)
+            train_info += f", Train Cls Loss: {epoch_train_cls_loss:.4f}"
+        print(f"{train_info}, Valid Loss: {epoch_valid_loss_orig:.4f}")
         if cfg.use_log_scale:
             print(f"Valid Loss (log scale): {epoch_valid_loss:.4f}")
 
