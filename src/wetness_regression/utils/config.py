@@ -82,6 +82,12 @@ class TrainingConfig:
     """マルチタスク学習時の樹種分類 loss の重み"""
     bottleneck_dim: int = 0
     """回帰ヘッドのボトルネック層の次元数（0 で無効）。768→bottleneck_dim→1 のように中間層を挟む"""
+    use_swa: bool = False
+    """True の場合、Stochastic Weight Averaging を適用する"""
+    swa_start_epoch: int = 0
+    """SWA を開始するエポック（0 の場合、全体の 75% 経過後に自動開始）"""
+    swa_lr: float = 1e-4
+    """SWA 適用中の学習率"""
 
     def __post_init__(self):
         if self.output_dir is None:
@@ -127,6 +133,9 @@ def load_trainingconfig(yaml_path: Path | str) -> TrainingConfig:
     config_dict["use_multi_task"] = _parse_yaml_bool(config_dict.get("use_multi_task", False), "use_multi_task")
     config_dict["species_loss_weight"] = float(config_dict.get("species_loss_weight", 0.5))
     config_dict["bottleneck_dim"] = int(config_dict.get("bottleneck_dim", 0))
+    config_dict["use_swa"] = _parse_yaml_bool(config_dict.get("use_swa", False), "use_swa")
+    config_dict["swa_start_epoch"] = int(config_dict.get("swa_start_epoch", 0))
+    config_dict["swa_lr"] = float(config_dict.get("swa_lr", 1e-4))
 
     if "output_dir" in config_dict and config_dict["output_dir"] is not None:
         config_dict["output_dir"] = Path(config_dict["output_dir"])

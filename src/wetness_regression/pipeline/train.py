@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import torch
 import torch.nn.functional as F
 import torch.optim as optim
+from torch.optim.swa_utils import AveragedModel, SWALR
 from wetness_regression.model.lr_scheduler import build_scheduler
 
 from wetness_regression.utils.config import TrainingConfig
@@ -158,6 +159,15 @@ def train(
     cls_criterion = torch.nn.CrossEntropyLoss() if cfg.use_multi_task else None
     scheduler = build_scheduler(cfg.scheduler, optimizer, cfg.num_epochs)
 
+    # SWA のセットアップ
+    swa_model: AveragedModel | None = None
+    swa_scheduler: SWALR | None = None
+    swa_start = 0
+    if cfg.use_swa:
+        swa_model = AveragedModel(model)
+        swa_start = cfg.swa_start_epoch if cfg.swa_start_epoch > 0 else int(0.75 * cfg.num_epochs)
+        print(f"SWA enabled: start epoch {swa_start}/{cfg.num_epochs}, swa_lr={cfg.swa_lr}")
+
     print(f"\nStarting training.")
     print(f"config: {asdict(cfg)}\n")
 
@@ -194,7 +204,14 @@ def train(
 
             running_loss += loss.item() * len(batch_samples)
 
-        scheduler.step()
+        # SWA モード: 定常LR + 重みの移動平均を更新
+        if cfg.use_swa and epoch >= swa_start:
+            swa_model.update_parameters(model)
+            if swa_scheduler is None:
+                swa_scheduler = SWALR(optimizer, swa_lr=cfg.swa_lr)
+            swa_scheduler.step()
+        else:
+            scheduler.step()
 
         # lossの計算
         epoch_train_loss = running_loss / len(train_samples)
@@ -230,11 +247,33 @@ def train(
 
     print(f"\ntraining finished.\nBest Epoch: {best_epoch} loss: {best_loss}")
 
+    # SWA モデルの評価
+    if swa_model is not None:
+        # BN 統計の更新
+        swa_model.train()
+        with torch.no_grad():
+            for batch_samples in iter_batches(train_samples, batch_size=cfg.batch_size, shuffle=False):
+                x = build_image_batch(batch_samples, image_size=cfg.image_size)
+                x = x.to(cfg.device)
+                swa_model(x)
+
+        _, swa_valid_loss_orig = evaluate(cfg, swa_model, valid_samples)
+        swa_better = swa_valid_loss_orig < best_loss
+        print(f"SWA model - Valid Loss: {swa_valid_loss_orig:.4f} {'(better)' if swa_better else ''}")
+
+        if swa_better:
+            best_model = swa_model.state_dict()
+            best_loss = swa_valid_loss_orig
+            torch.save(best_model, cfg.paths.model_path)
+
     # プロット
     log_df = log_df.iloc[:, 1:]
     plt.plot(log_df, label=log_df.columns.tolist())
     plt.legend()
     plt.savefig(cfg.paths.log_img_path)
 
-    model.load_state_dict(best_model)
-    return model
+    # 最終モデルをロードして返す
+    final_model = swa_model if (swa_model is not None and swa_better) else model
+    if not (swa_model is not None and swa_better):
+        final_model.load_state_dict(best_model)
+    return final_model
