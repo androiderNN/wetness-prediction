@@ -11,6 +11,10 @@ from sklearn.model_selection import GroupShuffleSplit
 from wetness_regression.utils.wrpath import TRAIN_CSV, TEST_CSV, TRAIN_IMAGE_DIR, TEST_IMAGE_DIR
 from wetness_regression.dataset.load_dataset import WetnessSample, load_csv
 
+# 全訓練データから計算した波形のグローバル統計量（標準化用）
+WAVEFORM_GLOBAL_MEAN = 0.132986
+WAVEFORM_GLOBAL_STD = 0.210632
+
 
 @dataclass
 class WetnessImageSample(WetnessSample):
@@ -65,6 +69,26 @@ def load_split_samples(
     valid_samples = [train_all_samples[i] for i in valid_idx]
 
     test_samples = load_image_samples(TEST_CSV, TEST_IMAGE_DIR)
+
+    return train_samples, valid_samples, test_samples
+
+
+def load_split_samples_1d(
+    valid_size: float = 0.2,
+    seed: int = 42,
+) -> tuple[list[WetnessSample], list[WetnessSample], list[WetnessSample]]:
+    """train/valid/test の波形サンプル（画像なし）を返す。"""
+    train_all_samples = load_csv(TRAIN_CSV)
+
+    # 樹種単位で分割する
+    species_groups = [sample.species for sample in train_all_samples]
+    gss = GroupShuffleSplit(n_splits=1, test_size=valid_size, random_state=seed)
+    train_idx, valid_idx = next(gss.split(train_all_samples, groups=species_groups))
+
+    train_samples = [train_all_samples[i] for i in train_idx]
+    valid_samples = [train_all_samples[i] for i in valid_idx]
+
+    test_samples = load_csv(TEST_CSV)
 
     return train_samples, valid_samples, test_samples
 

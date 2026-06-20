@@ -12,7 +12,9 @@ from wetness_regression.model.lr_scheduler import build_scheduler
 from wetness_regression.utils.config import TrainingConfig
 from wetness_regression.model.regression_model import RegressionModel, RMSELoss
 from wetness_regression.model.multi_task_model import MultiTaskModel
-from wetness_regression.dataset.load_image import WetnessImageSample
+from wetness_regression.dataset.load_image import WetnessImageSample, WAVEFORM_GLOBAL_MEAN, WAVEFORM_GLOBAL_STD
+from wetness_regression.model.regression_model_1d import MLPRegressor1D, ConvRegressor1D
+from wetness_regression.dataset.load_dataset import WetnessSample
 
 
 def build_image_batch(samples: list[WetnessImageSample], image_size: int) -> torch.Tensor:
@@ -27,6 +29,18 @@ def build_image_batch(samples: list[WetnessImageSample], image_size: int) -> tor
         print(f"reshaping images from {current_size} to {image_size}")
         batch = F.interpolate(batch, size=(image_size, image_size), mode="bilinear", align_corners=False)
 
+    return batch
+
+
+def build_waveform_batch(
+    samples: list[WetnessSample],
+    mean: float = WAVEFORM_GLOBAL_MEAN,
+    std: float = WAVEFORM_GLOBAL_STD,
+) -> torch.Tensor:
+    """サンプル一覧から標準化済み波形テンソル (B, 1555) を構築する。"""
+    waveforms = [torch.tensor(s.waveform, dtype=torch.float32) for s in samples]
+    batch = torch.stack(waveforms)
+    batch = (batch - mean) / std
     return batch
 
 
@@ -94,7 +108,7 @@ def iter_batches(
 def evaluate(
     cfg: TrainingConfig,
     model: RegressionModel,
-    samples: list[WetnessImageSample],
+    samples: list[WetnessImageSample] | list[WetnessSample],
 ) -> tuple[float, float]:
     """
     サンプル一覧に対するRMSEを正しく計算する。
@@ -111,7 +125,11 @@ def evaluate(
 
     with torch.no_grad():
         for batch_samples in iter_batches(samples, batch_size=cfg.batch_size, shuffle=False):
-            x = build_image_batch(batch_samples, image_size=cfg.image_size)
+            if cfg.model_type.startswith("1d"):
+                x = build_waveform_batch(batch_samples)
+            else:
+                x = build_image_batch(batch_samples, image_size=cfg.image_size)
+
             y = build_target_batch(batch_samples, use_log_scale=cfg.use_log_scale)
             x, y = x.to(cfg.device), y.to(cfg.device)
             pred = model(x)
@@ -143,8 +161,8 @@ def evaluate(
 
 def train(
     cfg: TrainingConfig,
-    train_samples: list[WetnessImageSample],
-    valid_samples: list[WetnessImageSample],
+    train_samples: list[WetnessImageSample] | list[WetnessSample],
+    valid_samples: list[WetnessImageSample] | list[WetnessSample],
 ):
     """
     学習を実行する
@@ -155,9 +173,26 @@ def train(
         valid_samples: 検証用サンプル
         batch_size: バッチサイズ
     """
-    # 樹種→クラスインデックスのマッピングを構築
-    species_to_idx: dict[int, int] | None = None
-    if cfg.use_multi_task:
+    # 1D モデルの場合、マルチタスクは無効
+    if cfg.model_type.startswith("1d") and cfg.use_multi_task:
+        print("Warning: use_multi_task is not supported for 1D models. Disabling.")
+        cfg.use_multi_task = False
+
+    # モデルの構築
+    if cfg.model_type == "1d_mlp":
+        model = MLPRegressor1D(
+            in_features=1555,
+            hidden_dims=cfg.hidden_dims or [1024, 512, 256],
+            dropout_rate=cfg.dropout_rate,
+        )
+    elif cfg.model_type == "1d_conv":
+        model = ConvRegressor1D(
+            conv_channels=cfg.conv_channels or [64, 128, 256],
+            kernel_sizes=cfg.kernel_sizes or [7, 5, 3],
+            dropout_rate=cfg.dropout_rate,
+        )
+    elif cfg.use_multi_task:
+        # 樹種→クラスインデックスのマッピングを構築
         unique_species = sorted({s.species for s in train_samples})
         species_to_idx = {sp: idx for idx, sp in enumerate(unique_species)}
         num_species = len(unique_species)
@@ -212,7 +247,10 @@ def train(
         running_cls_loss = 0.0
 
         for batch_samples in iter_batches(train_samples, batch_size=cfg.batch_size, shuffle=True):
-            x = build_image_batch(batch_samples, image_size=cfg.image_size)
+            if cfg.model_type.startswith("1d"):
+                x = build_waveform_batch(batch_samples)
+            else:
+                x = build_image_batch(batch_samples, image_size=cfg.image_size)
 
             # MixUp を使う場合は元スケールでターゲットを構築し、混合後に log 変換
             need_original_for_mixup = cfg.use_mixup and cfg.use_log_scale
@@ -300,7 +338,10 @@ def train(
         swa_model.train()
         with torch.no_grad():
             for batch_samples in iter_batches(train_samples, batch_size=cfg.batch_size, shuffle=False):
-                x = build_image_batch(batch_samples, image_size=cfg.image_size)
+                if cfg.model_type.startswith("1d"):
+                    x = build_waveform_batch(batch_samples)
+                else:
+                    x = build_image_batch(batch_samples, image_size=cfg.image_size)
                 x = x.to(cfg.device)
                 swa_model(x)
 

@@ -4,7 +4,7 @@ import shutil
 from pathlib import Path
 
 from wetness_regression.utils.config import load_trainingconfig
-from wetness_regression.dataset.load_image import load_split_samples
+from wetness_regression.dataset.load_image import load_split_samples, load_split_samples_1d
 from wetness_regression.pipeline.train import train
 from wetness_regression.pipeline.inference import inference
 
@@ -24,7 +24,10 @@ def run_training(config_path: Path):
     shutil.copy(config_path, config_copy_path)
 
     # 学習用・検証用・推論用サンプルを構築
-    train_samples, valid_samples, test_samples = load_split_samples()
+    if cfg.model_type == "2d":
+        train_samples, valid_samples, test_samples = load_split_samples()
+    else:
+        train_samples, valid_samples, test_samples = load_split_samples_1d()
 
     # 学習を実行
     model = train(cfg, train_samples, valid_samples)

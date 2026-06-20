@@ -50,12 +50,14 @@ class output_paths:
 class TrainingConfig:
     """学習時の設定"""
 
-    model_name: str
-    "モデル名"
     num_epochs: int
     """エポック数"""
     lr: float
     """学習率"""
+    model_name: str = ""
+    "モデル名（2Dモデルのみ。1Dでは未使用）"
+    model_type: str = "2d"
+    """モデルタイプ: '2d' / '1d_mlp' / '1d_conv'"""
     batch_size: int = 16
     """学習時のバッチサイズ"""
     device: str = "cpu"
@@ -63,11 +65,11 @@ class TrainingConfig:
     scheduler: str = "linear_decay"
     """学習率スケジューラ名。'none' / 'cosine' / 'warmup_cosine' / 'linear_decay' / 'reduce_on_plateau' / 'step'"""
     freeze_backbone: bool = True
-    """True の場合、出力層以外を凍結する"""
+    """True の場合、出力層以外を凍結する（2Dモデルのみ有効）"""
     output_dir: Path | None = None
     """出力先の親ディレクトリ"""
     image_size: int = -1
-    """入力画像サイズ（正方形、一辺）"""
+    """入力画像サイズ（正方形、一辺）。2Dモデル用"""
     paths: output_paths = None
     """出力に関連するパス"""
     use_log_scale: bool = False
@@ -77,7 +79,7 @@ class TrainingConfig:
     dropout_rate: float = 0.0
     """回帰ヘッドの Dropout 率（0.0 で無効）"""
     use_multi_task: bool = False
-    """True の場合、樹種分類を補助タスクとするマルチタスク学習を行う"""
+    """True の場合、樹種分類を補助タスクとするマルチタスク学習を行う（2Dモデルのみ）"""
     species_loss_weight: float = 0.5
     """マルチタスク学習時の樹種分類 loss の重み"""
     bottleneck_dim: int = 0
@@ -92,15 +94,27 @@ class TrainingConfig:
     """True の場合、MixUp データ拡張を適用する"""
     mixup_alpha: float = 0.2
     """MixUp の Beta 分布パラメータ（小さいほど控えめな混合）"""
+    hidden_dims: list | None = None
+    """1D-MLPの隠れ層次元リスト。Noneの場合は [1024, 512, 256]"""
+    conv_channels: list | None = None
+    """1D-Convのチャンネル数リスト。Noneの場合は [64, 128, 256]"""
+    kernel_sizes: list | None = None
+    """1D-Convのカーネルサイズリスト。Noneの場合は [7, 5, 3]"""
 
     def __post_init__(self):
         if self.output_dir is None:
             self.output_dir = OUTPUT_DIR
 
-        self.image_size = get_model_input_size(self.model_name)
+        if self.model_type == "2d":
+            self.image_size = get_model_input_size(self.model_name)
+        else:
+            self.image_size = -1
 
         timestamp = datetime.datetime.strftime(datetime.datetime.now(), "%m%d_%H%M%S")
-        dirname = f"{timestamp}_{self.model_name}"
+        if self.model_type == "2d":
+            dirname = f"{timestamp}_{self.model_name}"
+        else:
+            dirname = f"{timestamp}_{self.model_type}"
 
         self.paths = output_paths(self.output_dir / dirname)
 
@@ -127,6 +141,7 @@ def load_trainingconfig(yaml_path: Path | str) -> TrainingConfig:
         raise ValueError("yamlファイルが空です")
 
     # 型変換
+    config_dict["model_type"] = str(config_dict.get("model_type", "2d"))
     config_dict["num_epochs"] = int(config_dict["num_epochs"])
     config_dict["lr"] = float(config_dict["lr"])
     config_dict["batch_size"] = int(config_dict["batch_size"])
@@ -143,7 +158,24 @@ def load_trainingconfig(yaml_path: Path | str) -> TrainingConfig:
     config_dict["use_mixup"] = _parse_yaml_bool(config_dict.get("use_mixup", False), "use_mixup")
     config_dict["mixup_alpha"] = float(config_dict.get("mixup_alpha", 0.2))
 
+    # リスト型の読み込み
+    if "hidden_dims" in config_dict and config_dict["hidden_dims"] is not None:
+        config_dict["hidden_dims"] = list(config_dict["hidden_dims"])
+    if "conv_channels" in config_dict and config_dict["conv_channels"] is not None:
+        config_dict["conv_channels"] = list(config_dict["conv_channels"])
+    if "kernel_sizes" in config_dict and config_dict["kernel_sizes"] is not None:
+        config_dict["kernel_sizes"] = list(config_dict["kernel_sizes"])
+
     if "output_dir" in config_dict and config_dict["output_dir"] is not None:
         config_dict["output_dir"] = Path(config_dict["output_dir"])
+
+    # model_type のバリデーション
+    valid_types = {"2d", "1d_mlp", "1d_conv"}
+    if config_dict["model_type"] not in valid_types:
+        raise ValueError(f"model_type must be one of {valid_types}, got '{config_dict['model_type']}'")
+
+    # model_type が 2d の場合、model_name は必須（空文字不可）
+    if config_dict["model_type"] == "2d" and not config_dict.get("model_name", ""):
+        raise ValueError("model_name is required and must be non-empty when model_type is '2d'")
 
     return TrainingConfig(**config_dict)

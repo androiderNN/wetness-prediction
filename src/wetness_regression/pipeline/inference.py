@@ -4,13 +4,14 @@ import torch.nn as nn
 
 from wetness_regression.utils.config import TrainingConfig
 from wetness_regression.dataset.load_image import WetnessImageSample
-from wetness_regression.pipeline.train import build_image_batch, iter_batches
+from wetness_regression.dataset.load_dataset import WetnessSample
+from wetness_regression.pipeline.train import build_image_batch, build_waveform_batch, iter_batches
 
 
 def inference(
     model: nn.Module,
     cfg: TrainingConfig,
-    samples: list[WetnessImageSample],
+    samples: list[WetnessImageSample] | list[WetnessSample],
     export: bool = False
 ) -> pd.DataFrame:
     """
@@ -27,15 +28,18 @@ def inference(
     """
     model.to(cfg.device)
     model.eval()
-    image_size = cfg.image_size
 
     result = list()
 
     with torch.no_grad():
         for batch_samples in iter_batches(samples, batch_size=32, shuffle=False):
-            images = build_image_batch(batch_samples, image_size=image_size)
-            images = images.to(cfg.device)
-            pred = model(images)
+            if cfg.model_type.startswith("1d"):
+                x = build_waveform_batch(batch_samples)
+            else:
+                x = build_image_batch(batch_samples, image_size=cfg.image_size)
+
+            x = x.to(cfg.device)
+            pred = model(x)
 
             # マルチタスクモデルは (回帰出力, 分類出力) のタプルを返す
             if isinstance(pred, tuple):
@@ -47,10 +51,10 @@ def inference(
                     value = float(torch.expm1(pred_value).item())
                 value = max(value, 0.0)
                 result.append([sample.id, value])
-    
+
     result_df = pd.DataFrame(result, columns=["id", "pred"])
 
     if export:
         result_df.to_csv(cfg.paths.submission_path, index=False, header=False)
-    
+
     return result_df
