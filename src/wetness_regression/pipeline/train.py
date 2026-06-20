@@ -48,6 +48,36 @@ def build_species_batch(
     return torch.tensor(indices, dtype=torch.long)
 
 
+def apply_mixup(
+    x: torch.Tensor,
+    y: torch.Tensor,
+    sp: torch.Tensor | None,
+    alpha: float,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor | None]:
+    """MixUp データ拡張を適用する。y は元スケール（log変換前）のターゲット。
+    sp が None でない場合はソフトラベル（確率分布）を返す。"""
+    if alpha <= 0:
+        return x, y, sp
+
+    batch_size = x.size(0)
+    lam = float(np.random.beta(alpha, alpha))
+    index = torch.randperm(batch_size, device=x.device)
+
+    mixed_x = lam * x + (1 - lam) * x[index]
+    mixed_y = lam * y + (1 - lam) * y[index]
+
+    mixed_sp = None
+    if sp is not None:
+        num_classes = int(sp.max().item()) + 1
+        sp_onehot = torch.zeros(batch_size, num_classes, device=x.device)
+        sp_onehot.scatter_(1, sp.unsqueeze(1), 1.0)
+        sp_idx = torch.zeros(batch_size, num_classes, device=x.device)
+        sp_idx.scatter_(1, sp[index].unsqueeze(1), 1.0)
+        mixed_sp = lam * sp_onehot + (1 - lam) * sp_idx
+
+    return mixed_x, mixed_y, mixed_sp
+
+
 def iter_batches(
     samples: list[WetnessImageSample],
     batch_size: int,
@@ -183,16 +213,33 @@ def train(
 
         for batch_samples in iter_batches(train_samples, batch_size=cfg.batch_size, shuffle=True):
             x = build_image_batch(batch_samples, image_size=cfg.image_size)
-            y = build_target_batch(batch_samples, use_log_scale=cfg.use_log_scale)
+
+            # MixUp を使う場合は元スケールでターゲットを構築し、混合後に log 変換
+            need_original_for_mixup = cfg.use_mixup and cfg.use_log_scale
+            y = build_target_batch(batch_samples, use_log_scale=(cfg.use_log_scale and not need_original_for_mixup))
             x, y = x.to(cfg.device), y.to(cfg.device)
+
+            if cfg.use_multi_task:
+                sp = build_species_batch(batch_samples, species_to_idx).to(cfg.device)
+            else:
+                sp = None
+
+            # MixUp の適用（元スケール）
+            if cfg.use_mixup:
+                x, y, sp = apply_mixup(x, y, sp, cfg.mixup_alpha)
+                if need_original_for_mixup:
+                    y = torch.log1p(y.clamp(min=0))
 
             optimizer.zero_grad()
 
             if cfg.use_multi_task:
                 pred_reg, pred_cls = model(x)
-                sp = build_species_batch(batch_samples, species_to_idx).to(cfg.device)
                 loss_reg = criterion(pred_reg, y)
-                loss_cls = cls_criterion(pred_cls, sp)
+                if cfg.use_mixup:
+                    # ソフトラベルとの交差エントロピー
+                    loss_cls = -(sp * F.log_softmax(pred_cls, dim=1)).sum(dim=1).mean()
+                else:
+                    loss_cls = cls_criterion(pred_cls, sp)
                 loss = loss_reg + cfg.species_loss_weight * loss_cls
                 running_cls_loss += loss_cls.item() * len(batch_samples)
             else:

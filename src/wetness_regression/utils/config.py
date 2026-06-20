@@ -88,6 +88,10 @@ class TrainingConfig:
     """SWA を開始するエポック（0 の場合、全体の 75% 経過後に自動開始）"""
     swa_lr: float = 1e-4
     """SWA 適用中の学習率"""
+    use_mixup: bool = False
+    """True の場合、MixUp データ拡張を適用する"""
+    mixup_alpha: float = 0.2
+    """MixUp の Beta 分布パラメータ（小さいほど控えめな混合）"""
 
     def __post_init__(self):
         if self.output_dir is None:
@@ -136,6 +140,8 @@ def load_trainingconfig(yaml_path: Path | str) -> TrainingConfig:
     config_dict["use_swa"] = _parse_yaml_bool(config_dict.get("use_swa", False), "use_swa")
     config_dict["swa_start_epoch"] = int(config_dict.get("swa_start_epoch", 0))
     config_dict["swa_lr"] = float(config_dict.get("swa_lr", 1e-4))
+    config_dict["use_mixup"] = _parse_yaml_bool(config_dict.get("use_mixup", False), "use_mixup")
+    config_dict["mixup_alpha"] = float(config_dict.get("mixup_alpha", 0.2))
 
     if "output_dir" in config_dict and config_dict["output_dir"] is not None:
         config_dict["output_dir"] = Path(config_dict["output_dir"])
