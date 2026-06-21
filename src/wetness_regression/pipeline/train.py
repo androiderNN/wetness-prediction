@@ -15,6 +15,7 @@ from wetness_regression.model.multi_task_model import MultiTaskModel
 from wetness_regression.dataset.load_image import WetnessImageSample, WAVEFORM_GLOBAL_MEAN, WAVEFORM_GLOBAL_STD
 from wetness_regression.model.regression_model_1d import MLPRegressor1D, ConvRegressor1D
 from wetness_regression.dataset.load_dataset import WetnessSample
+from wetness_regression.pipeline.augmentation import apply_augmentations
 
 
 def build_image_batch(samples: list[WetnessImageSample], image_size: int) -> torch.Tensor:
@@ -251,6 +252,10 @@ def train(
                 x = build_waveform_batch(batch_samples)
             else:
                 x = build_image_batch(batch_samples, image_size=cfg.image_size)
+
+            # オーグメンテーション（訓練時のみ）
+            if cfg.use_augmentation:
+                x = apply_augmentations(x, cfg, is_1d=cfg.model_type.startswith("1d"))
 
             # MixUp を使う場合は元スケールでターゲットを構築し、混合後に log 変換
             need_original_for_mixup = cfg.use_mixup and cfg.use_log_scale

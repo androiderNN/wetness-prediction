@@ -100,6 +100,18 @@ class TrainingConfig:
     """1D-Convのチャンネル数リスト。Noneの場合は [64, 128, 256]"""
     kernel_sizes: list | None = None
     """1D-Convのカーネルサイズリスト。Noneの場合は [7, 5, 3]"""
+    use_augmentation: bool = True
+    """True の場合、学習時にデータオーグメンテーションを適用する"""
+    aug_noise_std: float = 0.01
+    """ガウスノイズの標準偏差"""
+    aug_shift_max: int = 10
+    """波長軸方向ランダムシフトの最大ピクセル数"""
+    aug_scale_range: list | None = None
+    """ランダムスケーリングの範囲 [low, high]。None の場合は (0.95, 1.05)"""
+    aug_baseline_shift_max: float = 0.02
+    """ベースラインシフトの最大オフセット量"""
+    aug_baseline_num_segments: int = 5
+    """ベースラインシフトのセグメント分割数（1Dモデルのみ使用）"""
 
     def __post_init__(self):
         if self.output_dir is None:
@@ -157,6 +169,11 @@ def load_trainingconfig(yaml_path: Path | str) -> TrainingConfig:
     config_dict["swa_lr"] = float(config_dict.get("swa_lr", 1e-4))
     config_dict["use_mixup"] = _parse_yaml_bool(config_dict.get("use_mixup", False), "use_mixup")
     config_dict["mixup_alpha"] = float(config_dict.get("mixup_alpha", 0.2))
+    config_dict["use_augmentation"] = _parse_yaml_bool(config_dict.get("use_augmentation", True), "use_augmentation")
+    config_dict["aug_noise_std"] = float(config_dict.get("aug_noise_std", 0.01))
+    config_dict["aug_shift_max"] = int(config_dict.get("aug_shift_max", 10))
+    config_dict["aug_baseline_shift_max"] = float(config_dict.get("aug_baseline_shift_max", 0.02))
+    config_dict["aug_baseline_num_segments"] = int(config_dict.get("aug_baseline_num_segments", 5))
 
     # リスト型の読み込み
     if "hidden_dims" in config_dict and config_dict["hidden_dims"] is not None:
@@ -165,6 +182,8 @@ def load_trainingconfig(yaml_path: Path | str) -> TrainingConfig:
         config_dict["conv_channels"] = list(config_dict["conv_channels"])
     if "kernel_sizes" in config_dict and config_dict["kernel_sizes"] is not None:
         config_dict["kernel_sizes"] = list(config_dict["kernel_sizes"])
+    if "aug_scale_range" in config_dict and config_dict["aug_scale_range"] is not None:
+        config_dict["aug_scale_range"] = list(config_dict["aug_scale_range"])
 
     if "output_dir" in config_dict and config_dict["output_dir"] is not None:
         config_dict["output_dir"] = Path(config_dict["output_dir"])
